@@ -23,6 +23,7 @@ sap.ui.define([
 				oViewModel = new JSONModel({
 					busy : false,
 					hasUIChanges : false,
+					isSplitterOpen: false,
 					usernameEmpty : true,
 					order : 0
 				});
@@ -57,9 +58,11 @@ sap.ui.define([
 			});
 		},
 		
-		onDelete : function () {
+		onDelete : function (oEvent) {
+			var selectedItem = oEvent.getSource();
 		    var oContext,
-		        oSelected = this.byId("peopleList").getSelectedItem(),
+				oPeopleList = this.byId("peopleList"),
+				oSelected = oPeopleList.getSelectedItem(),
 		        sUserName;
 
 			// Only when an Entry is selected
@@ -69,6 +72,9 @@ sap.ui.define([
 				oContext.delete().then(function () {
 					MessageToast.show(this._getText("deletionSuccessMessage", sUserName));
 				}.bind(this), function (oError) {
+                    if (oContext === oPeopleList.getSelectedItem().getBindingContext()) {
+                        this._setDetailArea(oContext);
+                    }
 					this._setUIChanges();
 					if (oError.canceled) {
 						MessageToast.show(this._getText("deletionRestoredMessage", sUserName));
@@ -76,6 +82,7 @@ sap.ui.define([
 					}
 					MessageBox.error(oError.message + ": " + sUserName);
 				}.bind(this));
+                this._setDetailArea();
 				this._setUIChanges(true);
 			}
 		},
@@ -188,6 +195,33 @@ sap.ui.define([
 
 			bMessageOpen = true;
 		},
+		
+		onSelectionChange : function (oEvent) {
+			var oBindingContext = oEvent.getParameter("listItem").getBindingContext();
+            this._setDetailArea(oBindingContext);
+        },
+
+		onSplitterClose : function (oEvent) {
+            var oDetailArea  = this.byId("detailArea"),
+				oLayout		 = this.byId("defaultLayout"),
+				oSearchField = this.byId("searchField"),
+			    oPeopleList  = this.byId("peopleList"),
+				oSelected    = oPeopleList.getSelectedItem();
+			
+			var lastSelection = this.oLastSelection;
+
+			var oBindingContext = oSelected.getBindingContext()
+			oDetailArea.setVisible(false);
+			oLayout.setSize(oBindingContext ? "100%" : "60%");
+			oLayout.setResizable(!!oBindingContext);
+			oSearchField.setWidth(oBindingContext ? "20%" : "40%");
+		
+			// Splitter is now openend
+			this._setSplitter(false)
+
+			oPeopleList.removeSelections(true); //remove selection
+
+		},
 
         _getText(sTextId, aArgs) {
             return this.getOwnerComponent().getModel("i18n").getResourceBundle().getText(sTextId, aArgs);
@@ -204,10 +238,52 @@ sap.ui.define([
 			oModel.setProperty("/hasUIChanges", bHasUIChanges);
 		},
 
+		_setSplitter : function (bIsSplitterOpen) {
+			var oModel = this.getView().getModel("appView");
+			oModel.setProperty("/isSplitterOpen", bIsSplitterOpen);
+		},
+
 		_setBusy : function (bIsBusy) {
 			var oModel = this.getView().getModel("appView");
 			oModel.setProperty("/busy", bIsBusy);
-		}
+		},
+
+		/**
+         * Toggles the visibility of the detail area
+         *
+         * @param {object} [oUserContext] - the current user context
+         */
+        _setDetailArea : function (oUserContext) {
+            var oDetailArea  = this.byId("detailArea"),
+                oOldContext,
+                oLayout		 = this.byId("defaultLayout"),
+                oSearchField = this.byId("searchField");
+			
+			if (!oDetailArea) {
+				return; // do nothing when running within view destruction
+			}
+	
+			oOldContext = oDetailArea.getBindingContext();
+			if (oOldContext) {
+				oOldContext.setKeepAlive(false);
+			}
+			if (oUserContext) {
+				oUserContext.setKeepAlive(true,
+					// hide details if kept entity was refreshed but does not exists any more
+					this._setDetailArea.bind(this));
+			}
+			
+			// Splitter is now openend
+			this._setSplitter(true)
+
+			oDetailArea.setBindingContext(oUserContext || null);
+			// resize view
+			oDetailArea.setVisible(!!oUserContext);
+			oLayout.setSize(oUserContext ? "60%" : "100%");
+			oLayout.setResizable(!!oUserContext);
+			oSearchField.setWidth(oUserContext ? "40%" : "20%");
+           
+        }
 
 	});
 });
